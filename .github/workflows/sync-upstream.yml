@@ -1,0 +1,49 @@
+name: Sync upstream
+
+on:
+  schedule:
+    # 06:17 Asia/Shanghai (UTC+8) every day.
+    - cron: '17 22 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-upstream.yml'
+      - '.github/scripts/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'Hitooooo/ClashRuleSet' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Test sync protection
+        run: python3 .github/scripts/test_sync_upstream.py
+
+      - name: Fetch upstream
+        run: git fetch --no-tags https://github.com/szkane/ClashRuleSet.git main:refs/remotes/upstream/main
+
+      - name: Merge while keeping personal configuration
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # Execute a copy so merging cannot replace the running script.
+          cp .github/scripts/sync-upstream.sh "$RUNNER_TEMP/sync-upstream.sh"
+          bash "$RUNNER_TEMP/sync-upstream.sh" refs/remotes/upstream/main
+
+      - name: Push sync commit
+        # A concurrent personal commit rejects this push; never force-push.
+        run: git push origin HEAD:main
